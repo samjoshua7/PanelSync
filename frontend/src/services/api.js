@@ -1,6 +1,7 @@
 // Basic API fetch wrapper using the auth token
 
-const BASE_URL = "http://localhost:5000/api";
+// Use environment variable for production, fallback to localhost for development
+const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
 const getHeaders = (token) => ({
   "Content-Type": "application/json",
