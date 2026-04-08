@@ -2,8 +2,9 @@ import React, { createContext, useContext, useEffect, useState } from "react";
 import { auth } from "../firebase";
 import {
   onAuthStateChanged,
-  signInWithPopup,
   GoogleAuthProvider,
+  signInWithRedirect,
+  getRedirectResult,
   signOut,
 } from "firebase/auth";
 
@@ -19,6 +20,19 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     let refreshInterval;
 
+    // Handle the result of a Google sign-in redirect
+    const handleRedirect = async () => {
+      try {
+        const result = await getRedirectResult(auth);
+        if (result) {
+          console.log("[AuthContext] Redirect login success:", result.user.email);
+        }
+      } catch (err) {
+        console.error("[AuthContext] Redirect login failed:", err.code, err.message);
+      }
+    };
+    handleRedirect();
+
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setCurrentUser(user);
       
@@ -26,19 +40,23 @@ export const AuthProvider = ({ children }) => {
       if (refreshInterval) clearInterval(refreshInterval);
 
       if (user) {
-        const freshToken = await user.getIdToken();
-        setToken(freshToken);
+        try {
+          const freshToken = await user.getIdToken();
+          setToken(freshToken);
 
-        // Auto-refresh token every 55 minutes
-        refreshInterval = setInterval(async () => {
-          try {
-            const refreshed = await user.getIdToken(true);
-            setToken(refreshed);
-            console.debug("[AuthContext] Token auto-refreshed.");
-          } catch (err) {
-            console.error("[AuthContext] Token refresh failed:", err);
-          }
-        }, 55 * 60 * 1000);
+          // Auto-refresh token every 55 minutes
+          refreshInterval = setInterval(async () => {
+            try {
+              const refreshed = await user.getIdToken(true);
+              setToken(refreshed);
+              console.debug("[AuthContext] Token auto-refreshed.");
+            } catch (err) {
+              console.error("[AuthContext] Token refresh failed:", err);
+            }
+          }, 55 * 60 * 1000);
+        } catch (err) {
+          console.error("[AuthContext] Error getting initial token:", err);
+        }
       } else {
         setToken(null);
       }
@@ -53,7 +71,8 @@ export const AuthProvider = ({ children }) => {
 
   const loginWithGoogle = () => {
     const provider = new GoogleAuthProvider();
-    return signInWithPopup(auth, provider);
+    // Use Redirect instead of Popup for better compatibility with COOP headers
+    return signInWithRedirect(auth, provider);
   };
 
   const logout = () => signOut(auth);

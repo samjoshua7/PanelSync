@@ -19,6 +19,7 @@ app.use(
       "http://localhost:5173",
       "https://panel-sync-frontend.vercel.app",
       "https://panelsync.vercel.app",
+      "https://panel-sync.vercel.app",
     ],
     methods: ["GET", "POST", "PUT", "DELETE"],
     credentials: true,
