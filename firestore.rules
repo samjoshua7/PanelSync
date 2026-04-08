@@ -1,0 +1,39 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Users can access their own environments
+    match /environments/{environmentId} {
+      allow read, write: if request.auth != null && request.auth.uid == resource.data.userId;
+      allow create: if request.auth != null && request.auth.uid == request.resource.data.userId;
+    }
+    
+    // Screens logic
+    match /screens/{screenId} {
+      // Screens themselves (TV apps) poll their own data, but don't have user auth token yet.
+      // So allow read if they know their exact ID.
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.uid == resource.data.userId;
+      
+      // Allow the TV component to update its own lastSeen heartbeat
+      // TV only updates lastSeen, so limit strictly to that field
+      allow update: if request.resource.data.diff(resource.data).affectedKeys()
+                        .hasOnly(['lastSeen']);
+    }
+
+    // Slides belong to a screen
+    match /slides/{slideId} {
+      // TVs need to read slides
+      allow read: if true;
+      // Admins modify slides
+      allow write: if request.auth != null; // further restrict by mapping to environment owner if needed
+    }
+
+    // Pairing codes
+    // TV generates, so any can read/write initially
+    match /pairingCodes/{codeId} {
+      allow create, read: if true;
+      allow update: if true;
+    }
+  }
+}
