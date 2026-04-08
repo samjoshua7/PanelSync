@@ -1,54 +1,56 @@
 import React, { useEffect, useRef, useState } from "react";
 import { AlertTriangle } from "lucide-react";
 
+/**
+ * Renders a single slide (image or video) for the TV slideshow.
+ * Handles: crossfade animation, error fallback, auto-advance.
+ */
 export default function MediaViewer({ slide, onComplete }) {
   const [error, setError] = useState(false);
+  const [visible, setVisible] = useState(false);
   const videoRef = useRef(null);
 
+  // Trigger crossfade entrance after mount
   useEffect(() => {
-    let timeoutId;
-    
-    if (slide.type === "image" && !error) {
-      timeoutId = setTimeout(() => {
-        onComplete();
-      }, (slide.duration || 10) * 1000);
-    }
+    const id = requestAnimationFrame(() => setVisible(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
 
-    if (error) {
-      // Fast fallback to skip broken slide after 5 seconds
-      timeoutId = setTimeout(() => {
-        onComplete();
-      }, 5000);
-    }
-
-    return () => {
-      if (timeoutId) clearTimeout(timeoutId);
-    };
+  // Image duration timer
+  useEffect(() => {
+    if (slide.type !== "image" || error) return;
+    const id = setTimeout(onComplete, (slide.duration || 10) * 1000);
+    return () => clearTimeout(id);
   }, [slide, onComplete, error]);
 
-  const handleVideoEnded = () => {
-    onComplete();
-  };
+  // Error skip timer
+  useEffect(() => {
+    if (!error) return;
+    const id = setTimeout(onComplete, 5000);
+    return () => clearTimeout(id);
+  }, [error, onComplete]);
 
-  const handleError = (e) => {
-    console.warn(`[MediaViewer Debug] Media failed to load (likely 404): ${slide.url}`);
+  const handleError = () => {
+    console.warn("[MediaViewer] Failed to load:", slide.url);
     setError(true);
   };
 
   if (error) {
     return (
-      <div className="w-full h-full bg-black flex flex-col items-center justify-center text-red-500 animate-pulse">
-        <AlertTriangle size={64} className="mb-4 opacity-80" />
+      <div className="w-full h-full bg-black flex flex-col items-center justify-center text-red-500">
+        <AlertTriangle size={56} className="mb-4 opacity-70" />
         <p className="text-xl font-bold">Media Unavailable</p>
-        <p className="text-sm mt-2 opacity-80 break-all max-w-lg text-center px-4">{slide.url}</p>
-        <p className="text-xs mt-4 text-gray-500">Skipping in 5 seconds...</p>
+        <p className="text-xs mt-2 opacity-60 max-w-sm text-center break-all px-4">
+          {slide.url}
+        </p>
+        <p className="text-xs mt-4 text-gray-600">Skipping in 5 seconds...</p>
       </div>
     );
   }
 
+  const fadeClass = `transition-opacity duration-700 ease-in-out ${visible ? "opacity-100" : "opacity-0"}`;
+
   if (slide.type === "video") {
-    // Video audio & auto-duration logic
-    console.log(`[Video Debug] Playing video. URL: ${slide.url}, Audio enabled: ${!!slide.audioEnabled}`);
     return (
       <video
         ref={videoRef}
@@ -56,19 +58,18 @@ export default function MediaViewer({ slide, onComplete }) {
         autoPlay
         muted={!slide.audioEnabled}
         playsInline
-        onEnded={handleVideoEnded}
+        onEnded={onComplete}
         onError={handleError}
-        className="w-full h-full object-contain bg-black animate-fade-in"
+        className={`w-full h-full object-contain bg-black ${fadeClass}`}
       />
     );
   }
 
-  console.log(`[Image Debug] Displaying image in <img> tag. URL: ${slide.url}`);
   return (
-    <div className="w-full h-full flex items-center justify-center bg-black animate-fade-in transition-opacity duration-1000">
-      <img 
-        src={slide.url} 
-        alt="slide content" 
+    <div className={`w-full h-full flex items-center justify-center bg-black ${fadeClass}`}>
+      <img
+        src={slide.url}
+        alt="slide content"
         onError={handleError}
         className="max-w-full max-h-full object-contain"
       />

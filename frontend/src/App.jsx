@@ -1,16 +1,33 @@
 import React from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
+import { Toaster } from "react-hot-toast";
 import { useAuth } from "./context/AuthContext";
+import Spinner from "./components/Spinner";
 
 // Pages
+import DeviceSelector from "./pages/DeviceSelector";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import EnvironmentDetail from "./pages/EnvironmentDetail";
 import TvPairing from "./pages/TvPairing";
 import Slideshow from "./pages/Slideshow";
 
+/**
+ * Protected route wrapper.
+ * Shows a spinner while Firebase resolves the auth state,
+ * then redirects to /login if unauthenticated.
+ */
 const ProtectedRoute = ({ children }) => {
-  const { currentUser } = useAuth();
+  const { currentUser, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#050508]">
+        <Spinner size={32} className="text-purple-400" />
+      </div>
+    );
+  }
+
   if (!currentUser) return <Navigate to="/login" />;
   return children;
 };
@@ -18,18 +35,58 @@ const ProtectedRoute = ({ children }) => {
 const App = () => {
   return (
     <Router>
+      {/* Global toast notifications — dark themed */}
+      <Toaster
+        position="top-right"
+        toastOptions={{
+          duration: 4000,
+          style: {
+            background: "#1a1a1a",
+            color: "#fff",
+            border: "1px solid #2a2a2a",
+            borderRadius: "12px",
+            fontSize: "14px",
+          },
+          success: {
+            iconTheme: { primary: "#a855f7", secondary: "#fff" },
+          },
+          error: {
+            iconTheme: { primary: "#ef4444", secondary: "#fff" },
+          },
+        }}
+      />
+
       <Routes>
+        {/* Landing — Device Selector (Display vs Admin) */}
+        <Route path="/" element={<DeviceSelector />} />
+
+        {/* Admin Auth */}
         <Route path="/login" element={<Login />} />
-        {/* Admin Routes */}
-        <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-        <Route path="/environments/:envId" element={<ProtectedRoute><EnvironmentDetail /></ProtectedRoute>} />
-        
-        {/* TV Screen Routes (Public initially, pairs to env) */}
+
+        {/* Admin Routes — protected */}
+        <Route
+          path="/dashboard"
+          element={
+            <ProtectedRoute>
+              <Dashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/environments/:envId"
+          element={
+            <ProtectedRoute>
+              <EnvironmentDetail />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* TV / Display Routes — public */}
         <Route path="/pair" element={<TvPairing />} />
         <Route path="/screen/:screenId" element={<Slideshow />} />
-        
-        {/* Default redirect to dashboard */}
-        <Route path="*" element={<Navigate to="/dashboard" />} />
+
+        {/* Fallback */}
+        <Route path="*" element={<Navigate to="/" />} />
       </Routes>
     </Router>
   );

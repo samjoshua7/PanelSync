@@ -1,65 +1,83 @@
-// Basic API fetch wrapper using the auth token
+// API service — thin fetch wrapper with auth token support
 
-// Use environment variable for production, fallback to localhost for development
+// Base URL: use env var in production, fallback to localhost in dev
 let BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
-if (BASE_URL.endsWith('/')) BASE_URL = BASE_URL.slice(0, -1); // remove trailing slash
-// If the user forgot to add /api to the end of their VITE_API_URL, we'll append it for them automatically
-if (!BASE_URL.endsWith('/api')) BASE_URL += '/api';
+if (BASE_URL.endsWith("/")) BASE_URL = BASE_URL.slice(0, -1);
+if (!BASE_URL.endsWith("/api")) BASE_URL += "/api";
 
 const getHeaders = (token) => ({
   "Content-Type": "application/json",
-  ...(token ? { Authorization: `Bearer ${token}` } : {})
+  ...(token ? { Authorization: `Bearer ${token}` } : {}),
 });
 
-export const api = {
-  // --- Environments ---
-  getEnvironments: async (token) => {
-    const res = await fetch(`${BASE_URL}/environments`, { headers: getHeaders(token) });
-    if (!res.ok) throw new Error("Failed to fetch environments");
-    return res.json();
-  },
-  createEnvironment: async (token, name) => {
-    const res = await fetch(`${BASE_URL}/environments`, {
-      method: "POST",
-      headers: getHeaders(token),
-      body: JSON.stringify({ name })
-    });
-    if (!res.ok) throw new Error("Failed to create environment");
-    return res.json();
-  },
-
-  // --- Screens ---
-  getScreensForEnvironment: async (token, environmentId) => {
-    const res = await fetch(`${BASE_URL}/screens/env/${environmentId}`, { headers: getHeaders(token) });
-    if (!res.ok) throw new Error("Failed to fetch screens");
-    return res.json();
-  },
-  generatePairingCode: async () => {
-    const res = await fetch(`${BASE_URL}/screens/generate-pairing-code`, { method: "POST" });
-    if (!res.ok) throw new Error("Failed to generate code");
-    return res.json();
-  },
-  checkPairingStatus: async (codeId) => {
-    const res = await fetch(`${BASE_URL}/screens/check-pairing/${codeId}`);
-    if (!res.ok) throw new Error("Failed to check pairing");
-    return res.json();
-  },
-  pairScreen: async (token, pairingCode, envId, name) => {
-    const res = await fetch(`${BASE_URL}/screens/pair`, {
-      method: "POST",
-      headers: getHeaders(token),
-      body: JSON.stringify({ pairingCode, envId, name })
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Failed to pair screen");
-    return data;
-  },
-  removeScreen: async (token, screenId) => {
-    const res = await fetch(`${BASE_URL}/screens/${screenId}`, {
-      method: "DELETE",
-      headers: getHeaders(token)
-    });
-    if (!res.ok) throw new Error("Failed to remove screen");
-    return res.json();
+/**
+ * Core fetch helper — throws on non-OK responses with a readable message.
+ */
+const apiFetch = async (url, options = {}) => {
+  const res = await fetch(url, options);
+  if (!res.ok) {
+    let message = `Request failed (${res.status})`;
+    try {
+      const body = await res.json();
+      if (body.error) message = body.error;
+    } catch {}
+    throw new Error(message);
   }
+  return res.json();
+};
+
+export const api = {
+  // ── Environments ──────────────────────────────────────────────────────────
+
+  getEnvironments: (token) =>
+    apiFetch(`${BASE_URL}/environments`, { headers: getHeaders(token) }),
+
+  getEnvironment: (token, envId) =>
+    apiFetch(`${BASE_URL}/environments/${envId}`, { headers: getHeaders(token) }),
+
+  createEnvironment: (token, name) =>
+    apiFetch(`${BASE_URL}/environments`, {
+      method: "POST",
+      headers: getHeaders(token),
+      body: JSON.stringify({ name }),
+    }),
+
+  renameEnvironment: (token, envId, name) =>
+    apiFetch(`${BASE_URL}/environments/${envId}`, {
+      method: "PUT",
+      headers: getHeaders(token),
+      body: JSON.stringify({ name }),
+    }),
+
+  deleteEnvironment: (token, envId) =>
+    apiFetch(`${BASE_URL}/environments/${envId}`, {
+      method: "DELETE",
+      headers: getHeaders(token),
+    }),
+
+  // ── Screens ───────────────────────────────────────────────────────────────
+
+  getScreensForEnvironment: (token, environmentId) =>
+    apiFetch(`${BASE_URL}/screens/env/${environmentId}`, {
+      headers: getHeaders(token),
+    }),
+
+  generatePairingCode: () =>
+    apiFetch(`${BASE_URL}/screens/generate-pairing-code`, { method: "POST" }),
+
+  checkPairingStatus: (codeId) =>
+    apiFetch(`${BASE_URL}/screens/check-pairing/${codeId}`),
+
+  pairScreen: (token, pairingCode, envId, name) =>
+    apiFetch(`${BASE_URL}/screens/pair`, {
+      method: "POST",
+      headers: getHeaders(token),
+      body: JSON.stringify({ pairingCode, envId, name }),
+    }),
+
+  removeScreen: (token, screenId) =>
+    apiFetch(`${BASE_URL}/screens/${screenId}`, {
+      method: "DELETE",
+      headers: getHeaders(token),
+    }),
 };
