@@ -3,6 +3,7 @@ import { auth } from "../firebase";
 import {
   onAuthStateChanged,
   GoogleAuthProvider,
+  signInWithPopup,
   signInWithRedirect,
   getRedirectResult,
   signOut,
@@ -28,7 +29,10 @@ export const AuthProvider = ({ children }) => {
           console.log("[AuthContext] Redirect login success:", result.user.email);
         }
       } catch (err) {
-        console.error("[AuthContext] Redirect login failed:", err.code, err.message);
+        // Only log errors if it's not the initial load or a non-auth error
+        if (err.code !== "auth/network-request-failed") {
+          console.error("[AuthContext] Redirect login failed:", err.code, err.message);
+        }
       }
     };
     handleRedirect();
@@ -71,8 +75,15 @@ export const AuthProvider = ({ children }) => {
 
   const loginWithGoogle = () => {
     const provider = new GoogleAuthProvider();
-    // Use Redirect instead of Popup for better compatibility with COOP headers
-    return signInWithRedirect(auth, provider);
+    // Use Popup as primary (requested), Redirect as fallback if needed
+    return signInWithPopup(auth, provider).catch((err) => {
+      // Fallback to redirect only if popup is blocked or specifically fails due to environment
+      if (err.code === "auth/popup-blocked" || err.code === "auth/cancelled-popup-request") {
+        console.warn("[AuthContext] Popup blocked, falling back to redirect...");
+        return signInWithRedirect(auth, provider);
+      }
+      throw err;
+    });
   };
 
   const logout = () => signOut(auth);
