@@ -12,7 +12,15 @@ const { verifyToken } = require("./src/middleware/authMiddleware");
 const environmentRoutes = require("./src/routes/environmentRoutes");
 const screenRoutes = require("./src/routes/screenRoutes");
 
-app.use(cors());
+app.use(cors({
+  origin: [
+    "http://localhost:5173", 
+    "https://panel-sync-frontend.vercel.app",
+    "https://panelsync.vercel.app" // Just in case
+  ],
+  methods: ["GET", "POST", "PUT", "DELETE"],
+  credentials: true
+}));
 app.use(express.json());
 
 // Public + Protected Screen Routes inside
