@@ -17,8 +17,23 @@ const getHeaders = (token) => ({
  */
 const apiFetch = async (url, options = {}) => {
   console.debug(`[API] Fetching: ${options.method || "GET"} ${url}`);
+  
+  // Track slow responses (Cold Start)
+  let isSlow = false;
+  const slowTimer = setTimeout(() => {
+    isSlow = true;
+    window.dispatchEvent(new CustomEvent("panelsync:slow-response"));
+  }, 5000);
+
   try {
     const res = await fetch(url, options);
+    
+    // Clear timer and signal recovery if we showed the overlay
+    clearTimeout(slowTimer);
+    if (isSlow) {
+      window.dispatchEvent(new CustomEvent("panelsync:response-received"));
+    }
+
     if (!res.ok) {
       let message = `Request failed (${res.status})`;
       try {
@@ -30,6 +45,10 @@ const apiFetch = async (url, options = {}) => {
     }
     return res.json();
   } catch (err) {
+    clearTimeout(slowTimer);
+    if (isSlow) {
+      window.dispatchEvent(new CustomEvent("panelsync:response-received"));
+    }
     console.error(`[API] Network or parse error for ${url}:`, err.message);
     throw err;
   }

@@ -1,6 +1,18 @@
 const dns = require("node:dns");
 dns.setDefaultResultOrder("ipv4first");
 
+// Log startup attempt immediately
+console.log(`[Startup] Process started at ${new Date().toISOString()}`);
+
+process.on("uncaughtException", (err) => {
+  console.error("[UncaughtException] CRITICAL:", err.message);
+  console.error(err.stack);
+});
+
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("[UnhandledRejection] CRITICAL at:", promise, "reason:", reason);
+});
+
 const express = require("express");
 const cors = require("cors");
 require("dotenv").config();
@@ -13,16 +25,28 @@ const screenRoutes = require("./src/routes/screenRoutes");
 const app = express();
 
 // ── CORS ──────────────────────────────────────────────────────────────────
+const allowedOrigins = [
+  "http://localhost:5173",
+  "https://panel-sync-frontend.vercel.app",
+  "https://panelsync.vercel.app",
+  "https://panel-sync.vercel.app",
+];
+
 app.use(
   cors({
-    origin: [
-      "http://localhost:5173",
-      "https://panel-sync-frontend.vercel.app",
-      "https://panelsync.vercel.app",
-      "https://panel-sync.vercel.app",
-    ],
-    methods: ["GET", "POST", "PUT", "DELETE"],
+    origin: (origin, callback) => {
+      // Allow requests with no origin (like mobile apps or curl)
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.indexOf(origin) !== -1 || origin.endsWith(".vercel.app")) {
+        callback(null, true);
+      } else {
+        console.warn(`[CORS] Request from blocked origin: ${origin}`);
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     credentials: true,
+    allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
 app.use(express.json());

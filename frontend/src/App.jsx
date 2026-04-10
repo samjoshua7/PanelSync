@@ -4,6 +4,7 @@ import { Toaster } from "react-hot-toast";
 import { useAuth } from "./context/AuthContext";
 import Spinner from "./components/Spinner";
 import CustomToast from "./components/Toast";
+import WakeUpOverlay from "./components/WakeUpOverlay";
 
 // Pages
 import DeviceSelector from "./pages/DeviceSelector";
@@ -43,6 +44,9 @@ const App = () => {
       >
         {(t) => <CustomToast t={t} />}
       </Toaster>
+
+      {/* Backend cold-start detector */}
+      <WakeUpOverlay />
 
       <Routes>
         {/* Landing — Device Selector (Display vs Admin) */}

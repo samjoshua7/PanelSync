@@ -17,9 +17,18 @@ if (process.env.FIREBASE_SERVICE_ACCOUNT) {
   }
 }
 
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount)
-});
+try {
+  if (!serviceAccount) {
+    throw new Error("No service account credentials found. Set FIREBASE_SERVICE_ACCOUNT env var or provide firebaseServiceAccount.json.");
+  }
+  admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount)
+  });
+  console.log("[FirebaseAdmin] Initialized successfully.");
+} catch (error) {
+  console.error("[FirebaseAdmin] CRITICAL: Initialization failed.", error.message);
+  console.error("[FirebaseAdmin] Warning: Firestore calls will fail until configuration is corrected.");
+}
 
 const db = admin.firestore();
 
