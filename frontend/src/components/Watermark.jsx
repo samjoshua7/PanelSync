@@ -7,9 +7,11 @@ import React, { useState, useEffect } from "react";
  */
 const CREDITS = [
   { name: "Sam Joshua", glow: false },
-  { name: "Vignesh",  glow: false },
-  { name: "Ramakrishna",  glow: false },
-  { name: "II CSE C",   glow: true },
+  { name: "Vignesh", glow: false },
+  { name: "Ramakrishna", glow: false },
+  { name: "Sanjay Anand", glow: false },
+  { name: "Sai Radha Krishnan", glow: false },
+  { name: "II CSE C", glow: true }
 ];
 
 /**
@@ -18,7 +20,7 @@ const CREDITS = [
  * If enabled=false, renders nothing.
  */
 export default function Watermark({ enabled = true }) {
-  const [index, setIndex]   = useState(0);
+  const [index, setIndex] = useState(0);
   const [fadeIn, setFadeIn] = useState(true);
 
   useEffect(() => {
@@ -82,14 +84,14 @@ export default function Watermark({ enabled = true }) {
           opacity: fadeIn ? 1 : 0,
           ...(current.glow
             ? {
-                color: "#c084fc",
-                textShadow:
-                  "0 0 6px rgba(192,132,252,0.85), 0 0 18px rgba(168,85,247,0.5)",
-              }
+              color: "#c084fc",
+              textShadow:
+                "0 0 6px rgba(192,132,252,0.85), 0 0 18px rgba(168,85,247,0.5)",
+            }
             : {
-                color: "rgba(210,210,228,0.88)",
-                textShadow: "none",
-              }),
+              color: "rgba(210,210,228,0.88)",
+              textShadow: "none",
+            }),
         }}
       >
         {current.name}

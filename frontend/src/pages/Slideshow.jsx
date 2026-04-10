@@ -45,9 +45,12 @@ export default function Slideshow() {
   // Refs for disconnect button hide timer and long-press detection
   const disconnectHideRef = useRef(null);
   const longPressRef = useRef(null);
+  const startedRef = useRef(false);
 
-  // ── Activation Handler (Triggered by click) ──────────────────────────────
+  // ── Activation Handler (Automated or Triggered by click) ──────────────────
   const handleActivate = async () => {
+    if (startedRef.current || loading) return;
+    startedRef.current = true;
     setIsActivated(true);
     
     // 1. Enter Fullscreen (Removed from direct call -> moved to useEffect Fix)
@@ -75,22 +78,35 @@ export default function Slideshow() {
     }
   };
 
+  const tryFullscreen = () => {
+    if (document.fullscreenElement) return;
+    document.documentElement.requestFullscreen().catch(() => {});
+  };
+
   useEffect(() => {
-    const enable = () => setUserInteracted(true);
+    const enable = () => tryFullscreen();
     window.addEventListener("click", enable, { once: true });
     return () => window.removeEventListener("click", enable);
   }, []);
 
-  // ── Auto-start countdown (5 s → 0 → trigger activation after user interaction) ──
+  // ── Auto Fullscreen Attempt after 2s ─────────────────────────────────────
   useEffect(() => {
-    if (!userInteracted || isActivated || loading) return;
+    const attempt = setTimeout(() => {
+      tryFullscreen();
+    }, 2000);
+    return () => clearTimeout(attempt);
+  }, []);
+
+  // ── Auto-start countdown (5 s → 0 → trigger activation automatically) ─────
+  useEffect(() => {
+    if (isActivated || loading) return;
     if (countdown <= 0) {
       handleActivate();
       return;
     }
     const timer = setTimeout(() => setCountdown((c) => c - 1), 1000);
     return () => clearTimeout(timer);
-  }, [countdown, isActivated, loading, userInteracted]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [countdown, isActivated, loading, handleActivate]);
 
   // ── Re-acquire Wake Lock on visibility change ─────────────────────────────
   useEffect(() => {
@@ -134,18 +150,8 @@ export default function Slideshow() {
     };
   }, []);
 
-  // ── Fix 3: Delayed Fullscreen after interaction ─────────────────────────
-  useEffect(() => {
-    if (!userInteracted) return;
-
-    const timer = setTimeout(() => {
-      if (!document.fullscreenElement) {
-        document.documentElement.requestFullscreen().catch(() => {});
-      }
-    }, 3000);
-
-    return () => clearTimeout(timer);
-  }, [userInteracted]);
+  // ── Fullscreen Cleanup ──────────────────────────────────────────────────
+  // (Fullscreen is now handled by single-attempt effects and click listener)
 
   // ── Fix 4: Disconnect action ─────────────────────────────────────────────
   const disconnectDevice = async () => {
