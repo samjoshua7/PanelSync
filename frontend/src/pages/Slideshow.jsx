@@ -77,24 +77,40 @@ export default function Slideshow() {
     }
   };
 
+  // ── Force Disconnect Logic (Requirement 1B) ───────────────────────────────
+  const handleForceDisconnect = useCallback(() => {
+    // 1. Stop all intervals (Cleanup handled by useEffects, but we force exit)
+    // 2. Clear local storage
+    localStorage.removeItem(LS_PERMANENT_ID);
+    localStorage.removeItem(LS_SCREEN_ID);
+    
+    // 3. Prevent auto reconnect by hard redirect
+    window.location.href = "/";
+  }, []);
+
   const tryFullscreen = () => {
     if (document.fullscreenElement) return;
     document.documentElement.requestFullscreen().catch(() => {});
   };
 
+  // ── Requirement 3C: Enable fullscreen on first interaction ────────────────
   useEffect(() => {
     const enable = () => {
       tryFullscreen();
-      // If we clicked before the countdown finished, let's start it now
-      if (!startedRef.current && !loading) {
-        handleActivate();
-      }
     };
-    window.addEventListener("click", enable);
+    window.addEventListener("click", enable, { once: true });
     return () => window.removeEventListener("click", enable);
-  }, [loading]);
+  }, []);
 
-  // ── Auto-start countdown (5 s → 0 → trigger activation automatically) ─────
+  // ── Requirement 3B: Try fullscreen (non-blocking) ─────────────────────────
+  useEffect(() => {
+    const attempt = setTimeout(() => {
+      tryFullscreen();
+    }, 2000);
+    return () => clearTimeout(attempt);
+  }, []);
+
+  // ── Requirement 3A: Slideshow auto-start independent of fullscreen ────────
   useEffect(() => {
     if (isActivated || loading) return;
     if (countdown <= 0) {
@@ -232,20 +248,21 @@ export default function Slideshow() {
           return;
         }
 
-        // Fix 3a: Watch the screen doc in real-time — if admin removes it
-        // while the slideshow is running, stop and send TV back to pairing.
+        // Requirement 1A: REAL-TIME listener for device existence
         unsubscribeScreen = onSnapshot(screenDocRef, (snap) => {
           if (!snap.exists()) {
-            localStorage.removeItem(LS_PERMANENT_ID);
-            localStorage.removeItem(LS_SCREEN_ID);
-            setErrorStatus("This screen was removed by the admin.");
-            setLoading(false);
-            // Give the user a moment to read the message, then redirect
-            setTimeout(() => navigate("/"), 3000);
+            console.warn("[Slideshow] Device removed from admin panel. Forcing disconnect.");
+            handleForceDisconnect();
           }
         });
 
-        const { userId, environmentId, envId: envIdField } = screenSnap.data();
+        const screenData = screenSnap.data();
+        if (!screenData) {
+          handleForceDisconnect();
+          return;
+        }
+
+        const { userId, environmentId, envId: envIdField } = screenData;
         const envId = environmentId || envIdField;
 
         // Read watermarkEnabled from environment doc
