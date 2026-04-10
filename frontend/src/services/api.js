@@ -5,6 +5,8 @@ let BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 if (BASE_URL.endsWith("/")) BASE_URL = BASE_URL.slice(0, -1);
 if (!BASE_URL.endsWith("/api")) BASE_URL += "/api";
 
+console.log("[API] Initialized with BASE_URL:", BASE_URL);
+
 const getHeaders = (token) => ({
   "Content-Type": "application/json",
   ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -14,16 +16,23 @@ const getHeaders = (token) => ({
  * Core fetch helper — throws on non-OK responses with a readable message.
  */
 const apiFetch = async (url, options = {}) => {
-  const res = await fetch(url, options);
-  if (!res.ok) {
-    let message = `Request failed (${res.status})`;
-    try {
-      const body = await res.json();
-      if (body.error) message = body.error;
-    } catch {}
-    throw new Error(message);
+  console.debug(`[API] Fetching: ${options.method || "GET"} ${url}`);
+  try {
+    const res = await fetch(url, options);
+    if (!res.ok) {
+      let message = `Request failed (${res.status})`;
+      try {
+        const body = await res.json();
+        if (body.error) message = body.error;
+      } catch {}
+      console.error(`[API] Error response from ${url}:`, message);
+      throw new Error(message);
+    }
+    return res.json();
+  } catch (err) {
+    console.error(`[API] Network or parse error for ${url}:`, err.message);
+    throw err;
   }
-  return res.json();
 };
 
 export const api = {

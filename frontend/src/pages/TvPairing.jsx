@@ -25,6 +25,7 @@ export default function TvPairing() {
   // Generate a pairing code and start polling
   const generateCodeAndPoll = useCallback(async () => {
     if (isGenerating) return;
+    console.debug("[TvPairing] Requesting new pairing code...");
     setIsGenerating(true);
     setIsCopied(false);
 
@@ -34,6 +35,7 @@ export default function TvPairing() {
 
     try {
       const data = await api.generatePairingCode();
+      console.log("[TvPairing] Successfully received pairing code:", data.code);
       setPairingData(data);
       setExpiryCountdown(CODE_EXPIRY_SECONDS);
 
@@ -53,6 +55,7 @@ export default function TvPairing() {
         try {
           const status = await api.checkPairingStatus(data.codeId);
           if (status.linkedScreenId) {
+            console.log("[TvPairing] Screen linked successfully! Redirecting to:", status.linkedScreenId);
             clearInterval(pollingRef.current);
             clearInterval(expiryRef.current);
             // Store permanent identity so TV auto-reconnects on reload
@@ -62,12 +65,16 @@ export default function TvPairing() {
             localStorage.setItem(LS_SCREEN_ID, status.linkedScreenId);
             navigate(`/screen/${status.linkedScreenId}`);
           }
-        } catch {
+        } catch (err) {
           // Silently ignore polling errors — keep retrying
         }
       }, 2500);
     } catch (err) {
-      console.error("Failed to generate pairing code", err);
+      console.error("[TvPairing] Failed to generate pairing code:", {
+        message: err.message,
+        stack: err.stack,
+        error: err
+      });
       toast.error("Failed to get pairing code. Retrying...");
       setTimeout(() => generateCodeAndPoll(), 5000);
     } finally {
