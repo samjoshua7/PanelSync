@@ -53,9 +53,8 @@ export default function Slideshow() {
     startedRef.current = true;
     setIsActivated(true);
     
-    // 1. Enter Fullscreen (Removed from direct call -> moved to useEffect Fix)
-    // Fullscreen is now handled by a 3s delayed useEffect after user interaction
-    // to strictly comply with browser gesture requirements.
+    // 1. Enter Fullscreen (Best effort — works if triggered by click)
+    tryFullscreen();
 
     // 2. Request Wake Lock (keep screen on)
     if ("wakeLock" in navigator) {
@@ -84,18 +83,16 @@ export default function Slideshow() {
   };
 
   useEffect(() => {
-    const enable = () => tryFullscreen();
-    window.addEventListener("click", enable, { once: true });
-    return () => window.removeEventListener("click", enable);
-  }, []);
-
-  // ── Auto Fullscreen Attempt after 2s ─────────────────────────────────────
-  useEffect(() => {
-    const attempt = setTimeout(() => {
+    const enable = () => {
       tryFullscreen();
-    }, 2000);
-    return () => clearTimeout(attempt);
-  }, []);
+      // If we clicked before the countdown finished, let's start it now
+      if (!startedRef.current && !loading) {
+        handleActivate();
+      }
+    };
+    window.addEventListener("click", enable);
+    return () => window.removeEventListener("click", enable);
+  }, [loading]);
 
   // ── Auto-start countdown (5 s → 0 → trigger activation automatically) ─────
   useEffect(() => {
