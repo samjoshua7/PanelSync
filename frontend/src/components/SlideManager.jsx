@@ -26,10 +26,14 @@ import {
   Volume2,
   VolumeX,
   Upload,
+  Type,
+  X,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { useAuth } from "../context/AuthContext";
 import Spinner from "./Spinner";
+import InfoTooltip from "./InfoTooltip";
+import { TOOLTIP_MESSAGES } from "../utils/tooltipMessages";
 
 const MAX_IMAGE_MB = 5;
 const MAX_VIDEO_MB = 50;
@@ -42,6 +46,14 @@ export default function SlideManager({ screenId, envId }) {
   // Per-slide state maps (id → bool)
   const [deletingIds, setDeletingIds] = useState(new Set());
   const [reorderingIds, setReorderingIds] = useState(new Set());
+
+  // Text slide form state
+  const [showTextForm, setShowTextForm] = useState(false);
+  const [textContent, setTextContent] = useState("");
+  const [textColor, setTextColor] = useState("#ffffff");
+  const [textBg, setTextBg] = useState("#000000");
+  const [textSize, setTextSize] = useState(36);
+  const [addingText, setAddingText] = useState(false);
 
   useEffect(() => {
     if (!envId || !currentUser) return;
@@ -130,6 +142,34 @@ export default function SlideManager({ screenId, envId }) {
         }
       }
     );
+  };
+
+  // ── Add Text Slide ──────────────────────────────────────────────────────────
+  const addTextSlide = async (e) => {
+    e.preventDefault();
+    const trimmed = textContent.trim();
+    if (!trimmed || addingText) return;
+    setAddingText(true);
+    const toastId = toast.loading("Adding text slide...");
+    try {
+      await addDoc(collection(db, "environments", envId, "slides"), {
+        userId: currentUser.uid,
+        envId,
+        type: "text",
+        content: trimmed,
+        style: { color: textColor, fontSize: textSize, backgroundColor: textBg },
+        order: slides.length,
+        duration: 10,
+        createdAt: serverTimestamp(),
+      });
+      toast.success("Text slide added!", { id: toastId });
+      setTextContent("");
+      setShowTextForm(false);
+    } catch (err) {
+      toast.error("Failed to add text slide.", { id: toastId });
+    } finally {
+      setAddingText(false);
+    }
   };
 
   // ── Delete ────────────────────────────────────────────────────────────────
@@ -225,39 +265,122 @@ export default function SlideManager({ screenId, envId }) {
         </h2>
 
         {/* Upload button */}
-        <div className="relative overflow-hidden">
-          <button
-            className={`px-4 py-2 rounded-xl text-sm font-medium flex items-center gap-2 transition-colors border ${
-              uploading
-                ? "border-purple-500/50 text-purple-300 bg-purple-500/10 cursor-not-allowed"
-                : "border-[#2a2a2a] text-gray-300 hover:text-white hover:border-purple-500/50"
-            }`}
-            disabled={uploading}
-          >
-            {uploading ? (
-              <>
-                <Spinner size={14} className="text-purple-400" />
-                {Math.round(progress)}%
-              </>
-            ) : (
-              <>
-                <Upload size={14} />
-                Upload Media
-              </>
-            )}
-          </button>
-          {!uploading && (
-            <input
-              type="file"
-              accept="image/png,image/jpeg,image/webp,video/mp4,video/webm"
-              onChange={handleFileUpload}
+        <div className="flex items-center gap-2">
+          <div className="relative overflow-hidden">
+            <button
+              className={`px-4 py-2 rounded-xl text-sm font-medium flex items-center gap-2 transition-colors border ${
+                uploading
+                  ? "border-purple-500/50 text-purple-300 bg-purple-500/10 cursor-not-allowed"
+                  : "border-[#2a2a2a] text-gray-300 hover:text-white hover:border-purple-500/50"
+              }`}
               disabled={uploading}
-              className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
-              aria-label="Upload media file"
-            />
-          )}
+            >
+              {uploading ? (
+                <>
+                  <Spinner size={14} className="text-purple-400" />
+                  {Math.round(progress)}%
+                </>
+              ) : (
+                <>
+                  <Upload size={14} />
+                  Upload Media
+                </>
+              )}
+            </button>
+            {!uploading && (
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp,video/mp4,video/webm"
+                onChange={handleFileUpload}
+                disabled={uploading}
+                className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
+                aria-label="Upload media file"
+              />
+            )}
+          </div>
+          <InfoTooltip message={TOOLTIP_MESSAGES.fileUpload} />
+
+          {/* Add Text Slide toggle */}
+          <button
+            type="button"
+            onClick={() => setShowTextForm((v) => !v)}
+            className={`px-4 py-2 rounded-xl text-sm font-medium flex items-center gap-2 transition-colors border ${
+              showTextForm
+                ? "border-blue-500/50 text-blue-300 bg-blue-500/10"
+                : "border-[#2a2a2a] text-gray-300 hover:text-white hover:border-blue-500/40"
+            }`}
+          >
+            {showTextForm ? <X size={14} /> : <Type size={14} />}
+            Text Slide
+          </button>
         </div>
       </div>
+
+      {/* Text slide form */}
+      {showTextForm && (
+        <form
+          onSubmit={addTextSlide}
+          className="p-5 border-b border-[#1e1e24] bg-[#0c0c12] flex flex-col gap-4"
+        >
+          <textarea
+            rows={3}
+            placeholder="Enter slide text content..."
+            value={textContent}
+            onChange={(e) => setTextContent(e.target.value)}
+            required
+            className="w-full bg-[#111114] border border-[#2a2a2a] rounded-xl px-4 py-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-blue-500 transition-colors resize-none"
+          />
+          <div className="flex flex-wrap gap-5 items-center">
+            {/* Font size */}
+            <div className="flex flex-col gap-1 flex-1 min-w-[140px]">
+              <label className="text-[10px] text-gray-500 uppercase tracking-wider">
+                Font Size: {textSize}px
+              </label>
+              <input
+                type="range" min={12} max={72} step={2}
+                value={textSize}
+                onChange={(e) => setTextSize(Number(e.target.value))}
+                className="accent-blue-500"
+              />
+            </div>
+            {/* Text color */}
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] text-gray-500 uppercase tracking-wider">Text Color</label>
+              <input
+                type="color" value={textColor}
+                onChange={(e) => setTextColor(e.target.value)}
+                className="w-8 h-8 rounded cursor-pointer border border-[#2a2a2a] bg-transparent"
+              />
+            </div>
+            {/* Background color */}
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] text-gray-500 uppercase tracking-wider">Background</label>
+              <input
+                type="color" value={textBg}
+                onChange={(e) => setTextBg(e.target.value)}
+                className="w-8 h-8 rounded cursor-pointer border border-[#2a2a2a] bg-transparent"
+              />
+            </div>
+          </div>
+          {/* Preview */}
+          <div
+            className="rounded-xl overflow-hidden h-16 flex items-center justify-center"
+            style={{ backgroundColor: textBg }}
+          >
+            <p style={{ color: textColor, fontSize: Math.min(textSize * 0.5, 24), fontWeight: "bold" }}>
+              {textContent || "Preview"}
+            </p>
+          </div>
+          <button
+            type="submit"
+            disabled={addingText || !textContent.trim()}
+            className="self-start px-5 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium rounded-xl flex items-center gap-2 transition-colors"
+          >
+            {addingText ? <Spinner size={14} /> : <Type size={14} />}
+            {addingText ? "Adding..." : "Add Text Slide"}
+          </button>
+        </form>
+      )}
 
       {/* Upload progress bar */}
       {uploading && (
@@ -335,6 +458,13 @@ export default function SlideManager({ screenId, envId }) {
                           preload="metadata"
                         />
                       </>
+                    ) : slide.type === "text" ? (
+                      <div
+                        className="w-full h-full flex items-center justify-center"
+                        style={{ backgroundColor: slide.style?.backgroundColor || "#000" }}
+                      >
+                        <Type size={16} style={{ color: slide.style?.color || "#fff" }} />
+                      </div>
                     ) : (
                       <img
                         src={slide.url}
@@ -350,6 +480,8 @@ export default function SlideManager({ screenId, envId }) {
                     <p className="text-sm font-medium text-gray-200 capitalize flex items-center gap-1.5">
                       {slide.type === "video" ? (
                         <Film size={13} className="text-blue-400" />
+                      ) : slide.type === "text" ? (
+                        <Type size={13} className="text-cyan-400" />
                       ) : (
                         <ImagePlus size={13} className="text-purple-400" />
                       )}

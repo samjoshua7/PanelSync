@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-d
 import { Toaster } from "react-hot-toast";
 import { useAuth } from "./context/AuthContext";
 import Spinner from "./components/Spinner";
+import CustomToast from "./components/Toast";
 
 // Pages
 import DeviceSelector from "./pages/DeviceSelector";
@@ -35,26 +36,13 @@ const ProtectedRoute = ({ children }) => {
 const App = () => {
   return (
     <Router>
-      {/* Global toast notifications — dark themed */}
+      {/* Global toast notifications — bottom-left, custom design */}
       <Toaster
-        position="top-right"
-        toastOptions={{
-          duration: 4000,
-          style: {
-            background: "#1a1a1a",
-            color: "#fff",
-            border: "1px solid #2a2a2a",
-            borderRadius: "12px",
-            fontSize: "14px",
-          },
-          success: {
-            iconTheme: { primary: "#a855f7", secondary: "#fff" },
-          },
-          error: {
-            iconTheme: { primary: "#ef4444", secondary: "#fff" },
-          },
-        }}
-      />
+        position="bottom-left"
+        toastOptions={{ duration: 3000 }}
+      >
+        {(t) => <CustomToast t={t} />}
+      </Toaster>
 
       <Routes>
         {/* Landing — Device Selector (Display vs Admin) */}

@@ -8,6 +8,8 @@ import Navbar from "../components/Navbar";
 import SkeletonCard from "../components/SkeletonCard";
 import ConfirmModal from "../components/ConfirmModal";
 import Spinner from "../components/Spinner";
+import InfoTooltip from "../components/InfoTooltip";
+import { TOOLTIP_MESSAGES } from "../utils/tooltipMessages";
 
 export default function Dashboard() {
   const { token } = useAuth();
@@ -132,6 +134,7 @@ export default function Dashboard() {
                 <h2 className="text-base font-semibold mb-4 flex items-center gap-2 text-gray-200">
                   <Terminal size={18} className="text-purple-400" />
                   New Environment
+                  <InfoTooltip message={TOOLTIP_MESSAGES.createEnv} />
                 </h2>
                 <input
                   type="text"
@@ -140,17 +143,32 @@ export default function Dashboard() {
                   onChange={(e) => setNewEnvName(e.target.value)}
                   placeholder="e.g. Lobby Screens"
                   maxLength={60}
-                  className="w-full bg-[#0a0a0d] border border-[#2a2a2a] rounded-xl px-4 py-3 mb-4 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-purple-500 transition-colors"
+                  disabled={environments.length >= 4}
+                  className="w-full bg-[#0a0a0d] border border-[#2a2a2a] rounded-xl px-4 py-3 mb-4 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-purple-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 />
                 <button
                   type="submit"
                   id="create-env-btn"
-                  disabled={isCreating || !newEnvName.trim()}
+                  disabled={isCreating || !newEnvName.trim() || environments.length >= 4}
                   className="w-full bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium py-3 rounded-xl flex justify-center items-center gap-2 transition-colors"
                 >
                   {isCreating ? <Spinner size={16} /> : <Plus size={16} />}
                   {isCreating ? "Creating..." : "Create"}
                 </button>
+
+                {/* Environment usage counter */}
+                {!isLoading && (
+                  <div className="mt-3 text-center">
+                    <p className="text-xs text-gray-600">
+                      {environments.length} / 4 environments used
+                    </p>
+                    {environments.length >= 4 && (
+                      <p className="text-xs text-yellow-500/80 mt-1">
+                        Limit reached. Delete one to create a new environment.
+                      </p>
+                    )}
+                  </div>
+                )}
               </form>
             </section>
 

@@ -38,35 +38,77 @@ app.use("/api/environments", verifyToken, environmentRoutes);
 app.get("/", (req, res) => res.send("PanelSync API running ✓"));
 
 // ── Device Health Cleanup Cron ────────────────────────────────────────────
-const THREE_HOURS_MS = 3 * 60 * 60 * 1000;
-const CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // every 5 minutes
+const TWO_MIN_MS          = 2  * 60 * 1000;
+const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
+const CLEANUP_INTERVAL_MS  = 5  * 60 * 1000; // every 5 minutes
+
+/**
+ * Safely convert a lastSeen value to milliseconds.
+ * Handles: Firestore Admin Timestamp, ISO string, numeric ms, or missing.
+ */
+const getLastSeenMs = (lastSeen) => {
+  if (!lastSeen) return null;
+  // Firestore Admin SDK Timestamp
+  if (typeof lastSeen.toMillis === "function") return lastSeen.toMillis();
+  // Firestore Admin SDK Timestamp (toDate fallback)
+  if (typeof lastSeen.toDate === "function") return lastSeen.toDate().getTime();
+  // ISO string or numeric
+  const ms = new Date(lastSeen).getTime();
+  return isNaN(ms) ? null : ms;
+};
 
 const runDeviceHealthCleanup = async () => {
   try {
     const now = Date.now();
     const screensSnapshot = await db.collection("screens").get();
 
-    const toDelete = screensSnapshot.docs.filter((doc) => {
-      const { lastSeen } = doc.data();
-      if (!lastSeen) return false; // Don't delete screens with no heartbeat data yet
-      const lastSeenMs = new Date(lastSeen).getTime();
-      return now - lastSeenMs > THREE_HOURS_MS;
+    const toDelete      = [];
+    const toMarkOffline = [];
+
+    screensSnapshot.docs.forEach((docSnap) => {
+      const { lastSeen, status } = docSnap.data();
+      const lastSeenMs = getLastSeenMs(lastSeen);
+
+      // Skip docs with no valid timestamp (e.g. freshly created without heartbeat)
+      if (lastSeenMs === null) return;
+
+      const diff = now - lastSeenMs;
+
+      if (diff > TWENTY_FOUR_HOURS_MS) {
+        // Auto-delete after 24 h of inactivity
+        toDelete.push(docSnap);
+      } else if (diff > TWO_MIN_MS && status !== "offline") {
+        // Mark offline after 2 min of no heartbeat
+        toMarkOffline.push(docSnap);
+      }
     });
 
-    if (toDelete.length === 0) return;
-
-    // Batch delete (Firestore max 500 per batch)
+    // Batch operations — Firestore max 500 per batch
     const BATCH_SIZE = 500;
-    for (let i = 0; i < toDelete.length; i += BATCH_SIZE) {
-      const chunk = toDelete.slice(i, i + BATCH_SIZE);
+
+    // Mark offline
+    for (let i = 0; i < toMarkOffline.length; i += BATCH_SIZE) {
       const batch = db.batch();
-      chunk.forEach((doc) => batch.delete(doc.ref));
+      toMarkOffline.slice(i, i + BATCH_SIZE).forEach((docSnap) =>
+        batch.update(docSnap.ref, { status: "offline" })
+      );
       await batch.commit();
     }
 
-    console.log(
-      `[HealthCleanup] Removed ${toDelete.length} inactive screen(s) at ${new Date().toISOString()}`
-    );
+    // Delete stale
+    for (let i = 0; i < toDelete.length; i += BATCH_SIZE) {
+      const batch = db.batch();
+      toDelete.slice(i, i + BATCH_SIZE).forEach((docSnap) =>
+        batch.delete(docSnap.ref)
+      );
+      await batch.commit();
+    }
+
+    if (toMarkOffline.length > 0 || toDelete.length > 0) {
+      console.log(
+        `[HealthCleanup] Marked offline: ${toMarkOffline.length} | Deleted: ${toDelete.length} — ${new Date().toISOString()}`
+      );
+    }
   } catch (err) {
     console.error("[HealthCleanup] Error during device cleanup:", err.message);
   }

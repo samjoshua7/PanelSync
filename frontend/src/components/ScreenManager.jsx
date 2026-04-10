@@ -3,6 +3,8 @@ import { api } from "../services/api";
 import { Plus, Monitor, CheckCircle, Clock, Trash2, AlertCircle, ExternalLink } from "lucide-react";
 import toast from "react-hot-toast";
 import Spinner from "./Spinner";
+import InfoTooltip from "./InfoTooltip";
+import { TOOLTIP_MESSAGES } from "../utils/tooltipMessages";
 
 export default function ScreenManager({ envId, token, screens, onScreenAdded }) {
   const [pairingCode, setPairingCode] = useState("");
@@ -51,16 +53,36 @@ export default function ScreenManager({ envId, token, screens, onScreenAdded }) 
     }
   };
 
-  const getScreenStatus = (lastSeen) => {
-    if (!lastSeen) return { status: "offline", label: "Offline" };
-    const diff = new Date() - new Date(lastSeen);
-    if (diff < 60_000) return { status: "online", label: "Online" };
-    const threeHours = 3 * 60 * 60 * 1000;
-    if (diff > threeHours) return { status: "inactive", label: "Inactive" };
-    const timeLeft = threeHours - diff;
-    const h = Math.floor(timeLeft / (1000 * 60 * 60));
-    const m = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
-    return { status: "offline", label: `Offline · inactive in ${h}h ${m}m` };
+  /**
+   * Determine display status of a screen.
+   * Prefers the server-written `status` field; falls back to time-diff.
+   *
+   * Fix 3b: Firestore Timestamp objects expose `.toMillis()` — using
+   * `new Date(timestamp)` returns Invalid Date → NaN. Normalise first.
+   */
+  const getScreenStatus = (screen) => {
+    const { lastSeen } = screen;
+    const now = Date.now();
+    
+    // Normalise lastSeen: Firestore Timestamp → ms, ISO string → ms, null → null
+    const ts = lastSeen?.toMillis?.()
+      ?? (lastSeen ? new Date(lastSeen).getTime() : null);
+
+    const diff = now - ts;
+    const OFFLINE_THRESHOLD = 24 * 60 * 60 * 1000; // 24 hours
+
+    let status = "offline";
+    let label = "Offline";
+
+    if (!ts || isNaN(diff)) {
+      status = "unknown";
+      label = "Last seen unavailable";
+    } else if (diff < OFFLINE_THRESHOLD) {
+      status = "online";
+      label = "Online";
+    }
+
+    return { status, label };
   };
 
   return (
@@ -72,7 +94,10 @@ export default function ScreenManager({ envId, token, screens, onScreenAdded }) 
 
       {/* Pair form */}
       <form onSubmit={handlePair} className="bg-[#0a0a0d] p-4 rounded-xl border border-[#1e1e24] mb-5">
-        <p className="text-xs font-medium text-gray-500 mb-3 uppercase tracking-wider">Pair New Screen</p>
+        <p className="text-xs font-medium text-gray-500 mb-3 uppercase tracking-wider flex items-center gap-1.5">
+          Pair New Screen
+          <InfoTooltip message={TOOLTIP_MESSAGES.pairCode} />
+        </p>
         <input
           type="text"
           placeholder="6-Digit TV Code"
@@ -107,7 +132,7 @@ export default function ScreenManager({ envId, token, screens, onScreenAdded }) 
           </p>
         ) : (
           screens.map((screen) => {
-            const statusObj = getScreenStatus(screen.lastSeen);
+            const statusObj = getScreenStatus(screen);   // ← pass full screen
             const isRemoving = removingIds.has(screen.id);
 
             return (
@@ -118,8 +143,13 @@ export default function ScreenManager({ envId, token, screens, onScreenAdded }) 
                 <div className="min-w-0 flex-1">
                   <p className="font-medium text-sm text-white truncate">{screen.name}</p>
                   <p className="text-xs text-gray-600 font-mono mt-0.5">
-                    {screen.id.substring(0, 12)}...
+                    TMP: {screen.id.substring(0, 10)}…
                   </p>
+                  {screen.permanentId && (
+                    <p className="text-xs text-purple-700 font-mono mt-0.5">
+                      PID: {screen.permanentId.substring(0, 8)}…
+                    </p>
+                  )}
                   <div className="mt-1.5">
                     {statusObj.status === "online" && (
                       <span className="flex items-center gap-1 text-xs text-green-400">

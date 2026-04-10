@@ -16,9 +16,9 @@ export default function MediaViewer({ slide, onComplete }) {
     return () => cancelAnimationFrame(id);
   }, []);
 
-  // Image duration timer
+  // Image/Text duration timer
   useEffect(() => {
-    if (slide.type !== "image" || error) return;
+    if ((slide.type !== "image" && slide.type !== "text") || error) return;
     const id = setTimeout(onComplete, (slide.duration || 10) * 1000);
     return () => clearTimeout(id);
   }, [slide, onComplete, error]);
@@ -49,6 +49,36 @@ export default function MediaViewer({ slide, onComplete }) {
   }
 
   const fadeClass = `transition-opacity duration-700 ease-in-out ${visible ? "opacity-100" : "opacity-0"}`;
+
+  if (slide.type === "text") {
+    const {
+      color = "#ffffff",
+      fontSize = 36,
+      backgroundColor = "#000000",
+    } = slide.style || {};
+    return (
+      <div
+        className={`w-full h-full flex items-center justify-center ${fadeClass}`}
+        style={{ backgroundColor }}
+      >
+        <p
+          style={{
+            color,
+            fontSize: `${fontSize}px`,
+            textAlign: "center",
+            padding: "3rem",
+            lineHeight: 1.4,
+            fontWeight: "bold",
+            maxWidth: "90%",
+            wordBreak: "break-word",
+            margin: 0,
+          }}
+        >
+          {slide.content}
+        </p>
+      </div>
+    );
+  }
 
   if (slide.type === "video") {
     return (

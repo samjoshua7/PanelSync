@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useRef } from "react";
-import { useParams } from "react-router-dom";
+import React, { useEffect, useState, useRef, useCallback } from "react";
+import { useParams, useNavigate } from "react-router-dom";
 import { db } from "../firebase";
 import {
   doc,
@@ -12,37 +12,47 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 import MediaViewer from "../components/MediaViewer";
-import { MonitorX, Wifi, WifiOff, MonitorPlay } from "lucide-react";
+import Watermark from "../components/Watermark";
+import { MonitorX, WifiOff, MonitorPlay, Power } from "lucide-react";
 import Spinner from "../components/Spinner";
 
 const HEARTBEAT_INTERVAL = 30000; // 30 seconds
 const RETRY_DELAY = 15000; // 15 seconds before re-attempting after error
+const AUTO_START_SECONDS = 5;
+
+// LocalStorage keys (mirror of TvPairing.jsx)
+const LS_PERMANENT_ID = "ps_permanentId";
+const LS_SCREEN_ID    = "ps_screenId";
 
 export default function Slideshow() {
   const { screenId } = useParams();
+  const navigate = useNavigate();
   const [slides, setSlides] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [loading, setLoading] = useState(true);
   const [errorStatus, setErrorStatus] = useState(null);
-  const [isActivated, setIsActivated] = useState(false); // New activation state
-  
+  const [isActivated, setIsActivated] = useState(false);
+  const [countdown, setCountdown] = useState(AUTO_START_SECONDS);
+  const [watermarkEnabled, setWatermarkEnabled] = useState(true);
+  const [userInteracted, setUserInteracted] = useState(false);
+  // Disconnect button (Fix 4): hidden by default, shown on mouse move or long-press
+  const [showDisconnectBtn, setShowDisconnectBtn] = useState(false);
+
   const wakeLockRef = useRef(null);
   const retryTimerRef = useRef(null);
   const noSleepVideoRef = useRef(null);
+  // Refs for disconnect button hide timer and long-press detection
+  const disconnectHideRef = useRef(null);
+  const longPressRef = useRef(null);
 
   // ── Activation Handler (Triggered by click) ──────────────────────────────
   const handleActivate = async () => {
     setIsActivated(true);
     
-    // 1. Enter Fullscreen
-    try {
-      if (document.documentElement.requestFullscreen) {
-        await document.documentElement.requestFullscreen();
-      }
-    } catch (err) {
-      console.warn("[Slideshow] Fullscreen denied:", err.message);
-    }
+    // 1. Enter Fullscreen (Removed from direct call -> moved to useEffect Fix)
+    // Fullscreen is now handled by a 3s delayed useEffect after user interaction
+    // to strictly comply with browser gesture requirements.
 
     // 2. Request Wake Lock (keep screen on)
     if ("wakeLock" in navigator) {
@@ -64,6 +74,23 @@ export default function Slideshow() {
       }
     }
   };
+
+  useEffect(() => {
+    const enable = () => setUserInteracted(true);
+    window.addEventListener("click", enable, { once: true });
+    return () => window.removeEventListener("click", enable);
+  }, []);
+
+  // ── Auto-start countdown (5 s → 0 → trigger activation after user interaction) ──
+  useEffect(() => {
+    if (!userInteracted || isActivated || loading) return;
+    if (countdown <= 0) {
+      handleActivate();
+      return;
+    }
+    const timer = setTimeout(() => setCountdown((c) => c - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [countdown, isActivated, loading, userInteracted]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Re-acquire Wake Lock on visibility change ─────────────────────────────
   useEffect(() => {
@@ -89,11 +116,58 @@ export default function Slideshow() {
     };
   }, [isActivated]);
 
+  // ── Fix 1: Disconnect button visibility (Show on move, hide after 5s) ───
+  useEffect(() => {
+    const handleMouseMove = () => {
+      setShowDisconnectBtn(true);
+      clearTimeout(disconnectHideRef.current);
+      disconnectHideRef.current = setTimeout(() => {
+        setShowDisconnectBtn(false);
+      }, 5000);
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      clearTimeout(disconnectHideRef.current);
+    };
+  }, []);
+
+  // ── Fix 3: Delayed Fullscreen after interaction ─────────────────────────
+  useEffect(() => {
+    if (!userInteracted) return;
+
+    const timer = setTimeout(() => {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      }
+    }, 3000);
+
+    return () => clearTimeout(timer);
+  }, [userInteracted]);
+
+  // ── Fix 4: Disconnect action ─────────────────────────────────────────────
+  const disconnectDevice = async () => {
+    if (!window.confirm("Disconnect this display?")) return;
+    try {
+      await updateDoc(doc(db, "screens", screenId), {
+        status: "offline",
+        lastSeen: serverTimestamp(),
+      });
+    } catch (e) {
+      console.warn("[Slideshow] Disconnect update failed:", e.message);
+    }
+    localStorage.removeItem(LS_PERMANENT_ID);
+    localStorage.removeItem(LS_SCREEN_ID);
+    navigate("/");
+  };
+
   // ── Online / Offline + Heartbeat ────────────────────────────────────────
   useEffect(() => {
-    const handleOnline = () => setIsOffline(false);
+    const handleOnline  = () => setIsOffline(false);
     const handleOffline = () => setIsOffline(true);
-    window.addEventListener("online", handleOnline);
+    window.addEventListener("online",  handleOnline);
     window.addEventListener("offline", handleOffline);
 
     let heartbeatInterval;
@@ -102,7 +176,8 @@ export default function Slideshow() {
         if (navigator.onLine) {
           try {
             await updateDoc(doc(db, "screens", screenId), {
-              lastSeen: serverTimestamp(),
+              lastSeen: Date.now(), // Use Date.now() for reliable health system
+              status: "online",
             });
           } catch (e) {
             console.warn("[Slideshow] Heartbeat failed:", e.message);
@@ -112,13 +187,20 @@ export default function Slideshow() {
     }
 
     return () => {
-      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("online",  handleOnline);
       window.removeEventListener("offline", handleOffline);
       if (heartbeatInterval) clearInterval(heartbeatInterval);
     };
   }, [screenId]);
 
-  // ── Load Slides ─────────────────────────────────────────────────────────
+  // ── Fix 2b: Guard stale currentIndex after slides CRUD ──────────────────
+  useEffect(() => {
+    if (slides.length > 0 && currentIndex >= slides.length) {
+      setCurrentIndex(0);
+    }
+  }, [slides, currentIndex]);
+
+  // ── Load Slides + Fix 3a: Real-time screen removal detection ────────────
   useEffect(() => {
     if (!screenId) return;
 
@@ -130,7 +212,8 @@ export default function Slideshow() {
       } catch {}
     }
 
-    let unsubscribe = () => {};
+    let unsubscribeSlides = () => {};
+    let unsubscribeScreen = () => {};
 
     const setup = async () => {
       try {
@@ -138,20 +221,44 @@ export default function Slideshow() {
         const screenSnap = await getDoc(screenDocRef);
 
         if (!screenSnap.exists()) {
-          setErrorStatus("Screen not found.");
+          // Screen was removed by admin — clear stored identity so TV can re-pair
+          localStorage.removeItem(LS_PERMANENT_ID);
+          localStorage.removeItem(LS_SCREEN_ID);
+          setErrorStatus("Screen not found. Please re-pair this device.");
           setLoading(false);
           return;
         }
 
+        // Fix 3a: Watch the screen doc in real-time — if admin removes it
+        // while the slideshow is running, stop and send TV back to pairing.
+        unsubscribeScreen = onSnapshot(screenDocRef, (snap) => {
+          if (!snap.exists()) {
+            localStorage.removeItem(LS_PERMANENT_ID);
+            localStorage.removeItem(LS_SCREEN_ID);
+            setErrorStatus("This screen was removed by the admin.");
+            setLoading(false);
+            // Give the user a moment to read the message, then redirect
+            setTimeout(() => navigate("/"), 3000);
+          }
+        });
+
         const { userId, environmentId, envId: envIdField } = screenSnap.data();
         const envId = environmentId || envIdField;
+
+        // Read watermarkEnabled from environment doc
+        try {
+          const envSnap = await getDoc(doc(db, "environments", envId));
+          if (envSnap.exists()) {
+            setWatermarkEnabled(envSnap.data().watermarkEnabled !== false);
+          }
+        } catch { /* non-critical; keep default true */ }
 
         const q = query(
           collection(db, "environments", envId, "slides"),
           where("userId", "==", userId)
         );
 
-        unsubscribe = onSnapshot(
+        unsubscribeSlides = onSnapshot(
           q,
           (snapshot) => {
             const slideData = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
@@ -186,10 +293,11 @@ export default function Slideshow() {
     setup();
 
     return () => {
-      unsubscribe();
+      unsubscribeSlides();
+      unsubscribeScreen();
       clearTimeout(retryTimerRef.current);
     };
-  }, [screenId]);
+  }, [screenId, navigate]);
 
   const handleNextSlide = () => {
     setCurrentIndex((prev) => (prev + 1) % slides.length);
@@ -206,22 +314,43 @@ export default function Slideshow() {
     );
   }
 
-  // Activation Overlay (The core fix for fullscreen and sleep)
+  // Activation Overlay with 5-second auto-start countdown
   if (!isActivated) {
+    const countdownPercent = ((AUTO_START_SECONDS - countdown) / AUTO_START_SECONDS) * 100;
     return (
       <div className="w-screen h-screen bg-black flex flex-col items-center justify-center p-8 text-center text-white">
         <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-2xl mb-8 animate-glow-pulse">
           <MonitorPlay size={32} className="text-white" />
         </div>
         <h1 className="text-3xl font-bold mb-3 tracking-tight">Display Ready</h1>
-        <p className="text-gray-400 max-w-sm mb-12 text-lg">
+        <p className="text-gray-400 max-w-sm mb-8 text-lg">
           Tap the button below to start the ad rotation in fullscreen and disable screen sleep.
         </p>
+
+        {/* Auto-start countdown ring */}
+        <div className="relative flex items-center justify-center mb-8">
+          <svg width="72" height="72" style={{ transform: "rotate(-90deg)" }}>
+            <circle cx="36" cy="36" r="30" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="4" />
+            <circle
+              cx="36" cy="36" r="30" fill="none"
+              stroke="rgba(168,85,247,0.8)" strokeWidth="4"
+              strokeDasharray={`${2 * Math.PI * 30}`}
+              strokeDashoffset={`${2 * Math.PI * 30 * (1 - countdownPercent / 100)}`}
+              style={{ transition: "stroke-dashoffset 1s linear" }}
+            />
+          </svg>
+          <span className="absolute text-2xl font-bold text-purple-300">{countdown}</span>
+        </div>
+
+        <p className="text-gray-500 text-sm mb-6">Auto-starting in {countdown}s…</p>
+
+        {/* Manual fallback button */}
         <button
+          id="launch-display-btn"
           onClick={handleActivate}
           className="bg-white text-black px-12 py-5 rounded-3xl font-bold text-xl hover:scale-105 active:scale-95 transition-all shadow-[0_0_30px_rgba(255,255,255,0.2)]"
         >
-          Launch Display
+          Launch Now
         </button>
         <p className="mt-12 text-xs text-gray-600 font-mono">ID: {screenId}</p>
       </div>
@@ -252,7 +381,9 @@ export default function Slideshow() {
   const currentSlide = slides[currentIndex];
 
   return (
-    <div className="w-screen h-screen bg-black overflow-hidden relative cursor-none select-none">
+    <div
+      className="w-screen h-screen bg-black overflow-hidden relative cursor-none select-none"
+    >
       {/* Invisible No-Sleep Video Fallback */}
       <video
         ref={noSleepVideoRef}
@@ -269,12 +400,27 @@ export default function Slideshow() {
           OFFLINE CACHE
         </div>
       )}
-      
+
       <MediaViewer
         key={currentSlide.id}
         slide={currentSlide}
         onComplete={handleNextSlide}
       />
+
+      {/* Brand watermark */}
+      <Watermark enabled={watermarkEnabled} />
+
+      {/* Fix 1: Disconnect button — visible only on mouse move */}
+      {showDisconnectBtn && (
+        <button
+          className="disconnect-btn"
+          onClick={disconnectDevice}
+          title="Disconnect this display"
+        >
+          <Power size={14} />
+          Disconnect
+        </button>
+      )}
     </div>
   );
 }

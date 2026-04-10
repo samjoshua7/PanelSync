@@ -53,6 +53,15 @@ router.post("/", async (req, res) => {
       return res.status(400).json({ error: "Name is required" });
     }
 
+    // Enforce max 4 environments per account
+    const existing = await db
+      .collection("environments")
+      .where("userId", "==", userId)
+      .get();
+    if (existing.size >= 4) {
+      return res.status(429).json({ error: "Environment limit reached (max 4 per account)" });
+    }
+
     const newEnvRef = await db.collection("environments").add({
       name: name.trim(),
       userId,

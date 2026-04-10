@@ -1,6 +1,7 @@
 const express = require("express");
 const { db } = require("../firebaseAdmin");
 const { verifyToken } = require("../middleware/authMiddleware");
+const { randomUUID } = require("crypto");
 const router = express.Router();
 
 // Generate a random 6-character code
@@ -38,7 +39,11 @@ router.get("/check-pairing/:codeId", async (req, res) => {
     
     const data = docDesc.data();
     if (data.linkedScreenId) {
-      res.json({ linkedScreenId: data.linkedScreenId, environmentId: data.environmentId });
+      res.json({
+        linkedScreenId: data.linkedScreenId,
+        environmentId: data.environmentId,
+        permanentId: data.permanentId || null,
+      });
     } else {
       // Not paired yet
       res.json({ linkedScreenId: null });
@@ -82,23 +87,27 @@ router.post("/pair", verifyToken, async (req, res) => {
     }
 
     // Create the screen
+    const permanentId = randomUUID();
     const screenRef = await db.collection("screens").add({
       name: name || `Screen ${pairingCode}`,
       envId: envId,
       environmentId: envId, // Keeping this for backward compatibility if needed temporarily
       userId, // keep user id for security rules
       status: "online",
+      permanentId,
       lastSeen: new Date().toISOString(),
       createdAt: new Date().toISOString()
     });
 
-    // Update the pairing code to notify the TV
+    // Update the pairing code to notify the TV (include permanentId so TV can store it)
     await db.collection("pairingCodes").doc(codeDoc.id).update({
       linkedScreenId: screenRef.id,
-      envId: envId
+      environmentId: envId,
+      envId: envId,
+      permanentId,
     });
 
-    res.json({ success: true, screenId: screenRef.id });
+    res.json({ success: true, screenId: screenRef.id, permanentId });
   } catch (error) {
     console.error("Error pairing screen:", error);
     res.status(500).json({ error: "Internal server error" });

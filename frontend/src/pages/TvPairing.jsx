@@ -7,6 +7,10 @@ import Spinner from "../components/Spinner";
 
 const CODE_EXPIRY_SECONDS = 120; // 2 minutes matches backend
 
+// LocalStorage keys for permanent device identity
+const LS_PERMANENT_ID = "ps_permanentId";
+const LS_SCREEN_ID    = "ps_screenId";
+
 export default function TvPairing() {
   const [pairingData, setPairingData] = useState(null);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -15,6 +19,8 @@ export default function TvPairing() {
   const navigate = useNavigate();
   const pollingRef = useRef(null);
   const expiryRef = useRef(null);
+  // Guard: ensures auto-reconnect via permanentId fires at most once per mount
+  const autoConnectTriedRef = useRef(false);
 
   // Generate a pairing code and start polling
   const generateCodeAndPoll = useCallback(async () => {
@@ -49,6 +55,11 @@ export default function TvPairing() {
           if (status.linkedScreenId) {
             clearInterval(pollingRef.current);
             clearInterval(expiryRef.current);
+            // Store permanent identity so TV auto-reconnects on reload
+            if (status.permanentId) {
+              localStorage.setItem(LS_PERMANENT_ID, status.permanentId);
+            }
+            localStorage.setItem(LS_SCREEN_ID, status.linkedScreenId);
             navigate(`/screen/${status.linkedScreenId}`);
           }
         } catch {
@@ -65,6 +76,35 @@ export default function TvPairing() {
   }, [isGenerating, navigate]);
 
   useEffect(() => {
+    // ── Permanent ID auto-reconnect ─────────────────────────────────────────
+    // If this TV was previously paired and has a stored screenId, go straight
+    // to the slideshow. Slideshow handles the "Screen not found" case and
+    // will clear localStorage if the admin removed the screen.
+    //
+    // Uses a retry helper to guard against the async race between localStorage
+    // reads and Firebase initialisation on first load.
+    if (autoConnectTriedRef.current) return;
+    autoConnectTriedRef.current = true;
+
+    const existingScreenId = localStorage.getItem(LS_SCREEN_ID);
+
+    if (existingScreenId) {
+      // Retry up to 2 times (1.5 s apart) in case the router isn't ready yet
+      const autoConnect = (retries = 2) => {
+        try {
+          navigate(`/screen/${existingScreenId}`);
+        } catch (err) {
+          console.warn("[TvPairing] Auto-connect attempt failed:", err.message);
+          if (retries > 0) {
+            setTimeout(() => autoConnect(retries - 1), 1500);
+          }
+        }
+      };
+      // Defer one tick so React Router is fully mounted before navigation
+      setTimeout(() => autoConnect(), 0);
+      return;
+    }
+
     generateCodeAndPoll();
     return () => {
       clearInterval(pollingRef.current);
@@ -157,8 +197,8 @@ export default function TvPairing() {
                         background: expiryPercent > 50
                           ? "linear-gradient(90deg, #3b82f6, #a855f7)"
                           : expiryPercent > 20
-                          ? "linear-gradient(90deg, #f59e0b, #ef4444)"
-                          : "#ef4444",
+                            ? "linear-gradient(90deg, #f59e0b, #ef4444)"
+                            : "#ef4444",
                       }}
                     />
                   </div>
@@ -201,8 +241,8 @@ export default function TvPairing() {
 
         {/* Link to Login for lost users */}
         <div className="mt-12">
-          <a 
-            href="/login" 
+          <a
+            href="/login"
             className="text-xs text-gray-600 hover:text-purple-400 border border-gray-800 hover:border-purple-500/50 rounded-lg px-4 py-2 transition-all"
           >
             Looking for Admin Login?
@@ -212,7 +252,7 @@ export default function TvPairing() {
 
       {/* Footer */}
       <div className="text-gray-700 text-xs text-center pb-4">
-        Built with ❤️ by PanelSync
+        Built with ❤️ by Sam Joshua
       </div>
     </div>
   );

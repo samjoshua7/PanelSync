@@ -180,7 +180,7 @@ export default function DeviceSelector() {
 
       {/* Footer */}
       <p className="mt-16 text-gray-600 text-xs animate-fade-in-up delay-300">
-        Built with ❤️ by PanelSync
+        Built with ❤️ by Sam Joshua
       </p>
     </div>
   );

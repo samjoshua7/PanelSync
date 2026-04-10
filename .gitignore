@@ -14,10 +14,23 @@ build/
 .env.development.local
 .env.test.local
 .env.production.local
+.env*.local
+*.env
 
 # Firebase credentials
 firebaseServiceAccount.json
 *-export.json
+
+# Secrets and sensitive files
+*.pem
+*.key
+*.p12
+*.cert
+*.crt
+secret.js
+secrets.js
+config.local.js
+*.local.json
 
 # IDEs and Editors
 .idea/
