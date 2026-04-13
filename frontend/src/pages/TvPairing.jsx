@@ -164,7 +164,7 @@ export default function TvPairing() {
         </p>
 
         {/* Big code display */}
-        <div className="w-full bg-[#0c0c10] border border-[#222] rounded-3xl p-10 text-center shadow-2xl relative overflow-hidden">
+        <div className="w-full bg-[#0c0c10] border border-[#222] rounded-3xl p-12 text-center shadow-2xl relative overflow-hidden">
           {/* Ambient glow */}
           <div
             className="pointer-events-none absolute inset-0 opacity-5 rounded-3xl"
@@ -179,7 +179,7 @@ export default function TvPairing() {
           ) : (
             <>
               {/* Code */}
-              <div className={`text-7xl font-mono tracking-[0.4em] font-bold pl-4 transition-opacity ${isExpired ? "opacity-30" : "text-white"}`}>
+              <div className={`text-3xl sm:text-5xl md:text-6xl font-mono tracking-[0.4em] font-bold pl-4 transition-opacity ${isExpired ? "opacity-30" : "text-white"}`}>
                 {pairingData?.code ?? "------"}
               </div>
 
