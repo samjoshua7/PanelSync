@@ -6,12 +6,12 @@ import React, { useState, useEffect } from "react";
  * glow: false → soft white, no glow
  */
 const CREDITS = [
-  { name: "Sam Joshua", glow: false },
-  { name: "Vignesh", glow: false },
-  { name: "Ramakrishna", glow: false },
-  { name: "Sanjay Anand", glow: false },
-  { name: "Sai Radha Krishnan", glow: false },
-  { name: "II CSE C", glow: true }
+  // { name: "Sam Joshua", glow: true },
+  // { name: "Vignesh", glow: false },
+  // { name: "Ramakrishna", glow: false },
+  // { name: "Sanjay Anand", glow: false },
+  // { name: "Sai Radha Krishnan", glow: false },
+  { name: "Team Panel Sync", glow: true }
 ];
 
 /**
